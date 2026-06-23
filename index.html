@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Werewolf Moderator Assistant</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-8 border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-red-500 tracking-wider">🐺 WEREWOLF MODERATOR</h1>
+            <p class="text-slate-400 text-sm mt-1">ระบบช่วยควบคุมเกมและบันทึกไทม์ไลน์</p>
+        </header>
+
+        <div id="setup-view" class="bg-slate-800 p-6 rounded-xl shadow-lg border border-slate-700">
+            <h2 class="text-xl font-semibold mb-4 text-emerald-400">👥 จัดการผู้เล่นและบทบาท</h2>
+            
+            <div class="flex gap-2 mb-6">
+                <input id="player-name-input" type="text" placeholder="ใส่ชื่อผู้เล่นที่นี่..." class="bg-slate-700 text-white px-4 py-2 rounded-lg flex-1 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <button onclick="addPlayer()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-medium transition">เพิ่มผู้เล่น</button>
+            </div>
+
+            <div class="mb-6">
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">รายชื่อผู้เล่นทั้งหมด (<span id="player-count">0</span> คน)</h3>
+                <ul id="player-setup-list" class="divide-y divide-slate-700 max-h-60 overflow-y-auto bg-slate-850 p-2 rounded-lg">
+                    <li class="text-slate-500 py-4 text-center">ยังไม่มีผู้เล่นในเกมนี้</li>
+                </ul>
+            </div>
+
+            <button onclick="startGame()" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-red-900/40 transition text-center block">
+                🎲 สุ่มบทบาท & เริ่มเกม
+            </button>
+        </div>
+
+        <div id="game-view" class="hidden grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <div class="md:col-span-2 space-y-6">
+                <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 flex justify-between items-center">
+                    <div>
+                        <div id="game-day-label" class="text-2xl font-bold text-amber-400">คืนที่ 1</div>
+                        <div id="game-phase-label" class="text-sm text-slate-400">โปรดดำเนินตามลำดับบทบาทด้านล่าง</div>
+                    </div>
+                    <button onclick="nextPhase()" id="phase-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-6 py-3 rounded-lg transition shadow-lg shadow-indigo-900/30">
+                        ➡️ ผ่านคืนนี้ (ไปตอนกลางวัน)
+                    </button>
+                </div>
+
+                <div id="action-panel" class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                    </div>
+            </div>
+
+            <div class="space-y-6">
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <h3 class="font-semibold text-slate-400 mb-3 text-sm uppercase">สถานะผู้เล่นปัจจุบัน</h3>
+                    <ul id="game-players-list" class="space-y-2">
+                        </ul>
+                </div>
+
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <h3 class="font-semibold text-slate-400 mb-3 text-sm uppercase">📜 บันทึกไทม์ไลน์ (Timeline)</h3>
+                    <div id="timeline-log" class="space-y-2 text-xs max-h-64 overflow-y-auto bg-slate-900 p-3 rounded-lg text-slate-300">
+                        <div class="text-slate-500 italic">เริ่มบันทึกเกม...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="gameover-view" class="hidden bg-slate-800 p-8 rounded-xl shadow-lg border-2 border-amber-500 text-center space-y-4">
+            <h2 class="text-4xl font-black text-amber-400 tracking-wider">🎉 จบเกม 🎉</h2>
+            <p id="winner-text" class="text-2xl font-bold text-white">ทีมผู้ชนะ: </p>
+            <hr class="border-slate-700">
+            <button onclick="resetGame()" class="bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded-lg font-medium transition">
+                🔄 กลับไปหน้าแรก (สร้างเกมใหม่)
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 1. CONFIG & DATA DICTIONARY ---
+        const BASE_ROLES = [
+            { id: 'werewolf', name: 'หมาป่า 🐺', team: 'Werewolf', priority: 1 },
+            { id: 'seer', name: 'ผู้หยั่งรู้ 👁️', team: 'Villager', priority: 2 },
+            { id: 'witch', name: 'แม่มด 🧪', team: 'Villager', priority: 3 },
+            { id: 'villager', name: 'ชาวบ้าน 🧑🌾', team: 'Villager', priority: 99 }
+        ];
+
+        // --- 2. GAME STATE ---
+        let players = [];
+        let gameState = {
+            status: 'Setup', // Setup, Playing, Ended
+            currentDay: 1,
+            currentPhase: 'Night' // Night, Day
+        };
+        let timeline = [];
+
+        // --- 3. SETUP PHASE FUNCTIONS ---
+        function addPlayer() {
+            const input = document.getElementById('player-name-input');
+            const name = input.value.trim();
+            if (!name) return;
+
+            players.push({
+                id: 'p_' + Date.now() + Math.random().toString(36).substr(2, 5),
+                name: name,
+                role: null,
+                isAlive: true
+            });
+
+            input.value = '';
+            renderSetup();
+        }
+
+        function removePlayer(id) {
+            players = players.filter(p => p.id !== id);
+            renderSetup();
+        }
+
+        function renderSetup() {
+            document.getElementById('player-count').innerText = players.length;
+            const list = document.getElementById('player-setup-list');
+            
+            if (players.length === 0) {
+                list.innerHTML = `<li class="text-slate-500 py-4 text-center">ยังไม่มีผู้เล่นในเกมนี้</li>`;
+                return;
+            }
+
+            list.innerHTML = players.map(p => `
+                <div class="flex justify-between items-center py-2 px-3 hover:bg-slate-700/50 rounded transition">
+                    <span class="font-medium text-white">${p.name}</span>
+                    <button onclick="removePlayer('${p.id}')" class="text-red-400 hover:text-red-500 text-sm font-semibold">ลบ</button>
+                </div>
+            `).join('');
+        }
+
+        // --- 4. GAME ENGINE LOGIC ---
+        function startGame() {
+            if (players.length < 3) {
+                alert('กรุณาเพิ่มผู้เล่นอย่างน้อย 3 คนเพื่อความสนุก!');
+                return;
+            }
+
+            // ระบบสุ่มบทบาทอัตโนมัติ (สัดส่วนตามจำนวนคนแบบง่าย)
+            let rolesPool = [];
+            let werewolfCount = Math.max(1, Math.floor(players.length / 3));
+            
+            for (let i = 0; i < werewolfCount; i++) rolesPool.push(BASE_ROLES.find(r => r.id === 'werewolf'));
+            rolesPool.push(BASE_ROLES.find(r => r.id === 'seer'));
+            rolesPool.push(BASE_ROLES.find(r => r.id === 'witch'));
+
+            while (rolesPool.length < players.length) {
+                rolesPool.push(BASE_ROLES.find(r => r.id === 'villager'));
+            }
+
+            // สับไพ่สุ่ม
+            rolesPool.sort(() => Math.random() - 0.5);
+
+            // แจกจ่ายบทบาท
+            players.forEach((player, idx) => {
+                player.role = rolesPool[idx];
+            });
+
+            gameState.status = 'Playing';
+            gameState.currentDay = 1;
+            gameState.currentPhase = 'Night';
+
+            logEvent(`🟢 เริ่มต้นเกมใหม่ มีผู้เล่นทั้งหมด ${players.length} คน (หมาป่า ${werewolfCount} ตัว)`);
+            
+            switchView();
+            initPhase();
+        }
+
+        function logEvent(message) {
+            const timePrefix = `[วัน ${gameState.currentDay} - ${gameState.currentPhase === 'Night' ? '🌙 กลางคืน' : '☀️ กลางวัน'}]`;
+            timeline.push(`${timePrefix} ${message}`);
+            
+            const logBox = document.getElementById('timeline-log');
+            logBox.innerHTML = timeline.map(log => `<div class="py-0.5 border-b border-slate-800">${log}</div>`).join('');
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function switchView() {
+            document.getElementById('setup-view').classList.add('hidden');
+            document.getElementById('game-view').classList.add('hidden');
+            document.getElementById('gameover-view').classList.add('hidden');
+
+            if (gameState.status === 'Setup') document.getElementById('setup-view').classList.remove('hidden');
+            if (gameState.status === 'Playing') document.getElementById('game-view').classList.remove('hidden');
+            if (gameState.status === 'Ended') document.getElementById('gameover-view').classList.remove('hidden');
+        }
+
+        function updatePlayersSidebar() {
+            const list = document.getElementById('game-players-list');
+            list.innerHTML = players.map(p => `
+                <li class="flex justify-between items-center bg-slate-700/40 p-2 rounded border-l-4 ${p.isAlive ? 'border-emerald-500' : 'border-red-500 opacity-50'}">
+                    <div>
+                        <span class="font-medium text-white ${!p.isAlive ? 'line-through' : ''}">${p.name}</span>
+                        <span class="block text-[10px] text-slate-400 font-mono">${p.role.name}</span>
+                    </div>
+                    <span class="text-xs px-2 py-0.5 rounded font-bold ${p.isAlive ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-400'}">
+                        ${p.isAlive ? 'มีชีวิต' : 'ตายแล้ว'}
+                    </span>
+                </li>
+            `).join('');
+        }
+
+        // --- 5. PHASE & ACTION CONTROL ---
+        function initPhase() {
+            updatePlayersSidebar();
+            
+            const dayLabel = document.getElementById('game-day-label');
+            const phaseLabel = document.getElementById('game-phase-label');
+            const phaseBtn = document.getElementById('phase-btn');
+            const panel = document.getElementById('action-panel');
+
+            if (gameState.currentPhase === 'Night') {
+                dayLabel.innerText = `🌙 คืนที่ ${gameState.currentDay}`;
+                phaseLabel.innerText = `โปรดเรียกบทบาทตามลำดับ และบันทึกพฤติกรรม`;
+                phaseBtn.innerText = `☀️ ผ่านคืนนี้ (ประกาศคนตาย)`;
+                
+                // ดึงเฉพาะบทบาทที่มีคิวตื่นตอนกลางคืนและยังไม่ตาย
+                const activeNightRoles = [...new Set(players.filter(p => p.isAlive && p.role.priority < 99).map(p => p.role))];
+                activeNightRoles.sort((a,b) => a.priority - b.priority);
+
+                let html = `<h3 class="text-lg font-bold text-indigo-400 mb-4">ลำดับการตื่นคืนนี้</h3><div class="space-y-4">`;
+                activeNightRoles.forEach(role => {
+                    html += `
+                        <div class="p-3 bg-slate-700/30 rounded-lg border border-slate-650">
+                            <div class="font-bold text-white mb-2">${role.name} ตื่นขึ้นมา!</div>
+                            <div class="flex gap-2 flex-wrap">
+                                ${players.filter(p => p.isAlive).map(p => `
+                                    <button onclick="logEvent('${role.name} เลือกทำแอคชันใส่ คุณ ${p.name}')" class="bg-slate-700 hover:bg-slate-600 text-xs px-2 py-1 rounded transition">🎯 ${p.name}</button>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                panel.innerHTML = html;
+
+            } else {
+                dayLabel.innerText = `☀️ วันที่ ${gameState.currentDay}`;
+                phaseLabel.innerText = `รวบรวมเบาะแส ถกเถียง และลงมติประหารชีวิต`;
+                phaseBtn.innerText = `🌙 เข้าสู่ช่วงกลางคืน`;
+
+                // แผงโหวตช่วงกลางวัน
+                let html = `
+                    <h3 class="text-lg font-bold text-amber-400 mb-4">ระบบบันทึกมติการโหวตออก</h3>
+                    <p class="text-xs text-slate-400 mb-3">*เมื่อเลือกผู้เล่นคนใด คนนั้นจะเปลี่ยนสถานะเป็นตายและนำออกจากเกมทันที</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                `;
+                players.filter(p => p.isAlive).forEach(p => {
+                    html += `
+                        <button onclick="killPlayer('${p.id}', 'ถูกโหวตแขวนคอ')" class="bg-red-950/40 hover:bg-red-900/60 border border-red-800 text-red-200 text-left p-3 rounded-lg transition font-medium flex justify-between items-center">
+                            <span>💀 แขวนคอ: ${p.name}</span>
+                            <span class="text-xs opacity-60">(${p.role.name})</span>
+                        </button>
+                    `;
+                });
+                html += `
+                    </div>
+                    <button onclick="logEvent('ชาวบ้านไม่มีมติเอกฉันท์ในวันนี้ จึงไม่มีใครถูกแขวนคอ')" class="w-full mt-4 bg-slate-700 hover:bg-slate-600 text-white py-2 text-sm rounded transition">🕊️ ไม่มีใครถูกโหวตออก</button>
+                `;
+                panel.innerHTML = html;
+            }
+        }
+
+        function nextPhase() {
+            if (gameState.currentPhase === 'Night') {
+                gameState.currentPhase = 'Day';
+                logEvent(`🔔 รุ่งสางเข้าสู่เวลากลางวัน ม็อดโปรดประกาศเหตุการณ์คืนที่ผ่านมา`);
+            } else {
+                gameState.currentPhase = 'Night';
+                gameState.currentDay += 1;
+                logEvent(`🌌 ความมืดปกคลุมหมู่บ้าน เข้าสู่คืนที่ ${gameState.currentDay}`);
+            }
+            initPhase();
+        }
+
+        function killPlayer(id, reason) {
+            const player = players.find(p => p.id === id);
+            if (!player) return;
+
+            player.isAlive = false;
+            logEvent(`❌ คุณ ${player.name} (${player.role.name}) ได้ตายลงแล้ว [สาเหตุ: ${reason}]`);
+            
+            if (checkWinCondition()) return;
+            
+            initPhase();
+        }
+
+        // --- 6. WIN CONDITION CHECKER ---
+        function checkWinCondition() {
+            const alivePlayers = players.filter(p => p.isAlive);
+            const wolfCount = alivePlayers.filter(p => p.role.team === 'Werewolf').length;
+            const villagerCount = alivePlayers.filter(p => p.role.team === 'Villager').length;
+
+            if (wolfCount === 0) {
+                endGame('ฝ่ายชาวบ้าน (Villagers) 🎉');
+                return true;
+            } else if (wolfCount >= villagerCount) {
+                endGame('ฝ่ายหมาป่า (Werewolves) 🐺');
+                return true;
+            }
+            return false;
+        }
+
+        function endGame(winner) {
+            gameState.status = 'Ended';
+            document.getElementById('winner-text').innerText = `🏆 ทีมผู้ชนะ: ${winner}`;
+            logEvent(`🏁 เกมจบลงแล้ว! ทีมผู้ชนะคือ ${winner}`);
+            switchView();
+        }
+
+        function resetGame() {
+            players = [];
+            gameState = { status: 'Setup', currentDay: 1, currentPhase: 'Night' };
+            timeline = [];
+            document.getElementById('timeline-log').innerHTML = `<div class="text-slate-500 italic">เริ่มบันทึกเกม...</div>`;
+            switchView();
+            renderSetup();
+        }
+    </script>
+</body>
+</html>
